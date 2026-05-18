@@ -113,40 +113,81 @@ def pct(num, den):
     return round(num / den * 100, 1) if den else 0.0
 
 # ─── PSVNC: Pares de Servicios con Vuelo Nocturno Consecutivo ─────────
+#
+# Definición correcta:
+#   Un PAIRING es un grupo de vuelos del mismo período de servicio,
+#   separados por < 8 h entre sí (multi-leg del mismo día de trabajo).
+#
+#   Un pairing "toca la franja nocturna 00:30–05:30" si:
+#     - Algún vuelo sale en esa franja, O
+#     - Algún vuelo llega en esa franja, O
+#     - Algún vuelo cruza la medianoche (sale antes de 00:30 y llega al día siguiente)
+#
+#   PSVNC = pairing nocturno en día calendario D
+#           seguido de pairing nocturno en día calendario D+1.
+
+def _pairing_toca_franja(pairing_df: pd.DataFrame) -> bool:
+    for _, r in pairing_df.iterrows():
+        h_s = r["dt_start"].hour + r["dt_start"].minute / 60
+        h_e = r["dt_end"].hour + r["dt_end"].minute / 60
+        if 0.5 <= h_s <= 5.5:   return True  # sale en franja
+        if 0.5 <= h_e <= 5.5:   return True  # llega en franja
+        if r["dt_end"].date() > r["dt_start"].date():  return True  # cruza medianoche
+    return False
+
+def _get_pairings(fl_socio: pd.DataFrame, gap_hours: float = 8.0) -> list:
+    """Agrupa vuelos en pairings (períodos de servicio) separados por >= gap_hours."""
+    fl = fl_socio.sort_values("dt_start").reset_index(drop=True)
+    if len(fl) == 0:
+        return []
+    pairings, cur = [], [0]
+    for i in range(1, len(fl)):
+        gap = (fl.iloc[i]["dt_start"] - fl.iloc[i-1]["dt_end"]).total_seconds() / 3600
+        if gap >= gap_hours:
+            pairings.append(fl.iloc[cur].copy())
+            cur = []
+        cur.append(i)
+    if cur:
+        pairings.append(fl.iloc[cur].copy())
+    return pairings
+
 def compute_psvnc(flights_df: pd.DataFrame) -> list:
     """
-    Para cada socio, busca pares de vuelos en días consecutivos
-    donde al menos uno es nocturno Y el descanso entre ellos < 10h.
-    Retorna lista de dicts con detalle.
+    Detecta pares de pairings nocturnos en días calendario consecutivos.
+    Retorna lista de dicts con detalle de cada evento PSVNC.
     """
     records = []
     for staff, grp in flights_df.groupby("Staff Num"):
-        g = grp.sort_values("dt_start").reset_index(drop=True)
-        for i in range(len(g) - 1):
-            r1, r2 = g.iloc[i], g.iloc[i+1]
-            rest_h = (r2["dt_start"] - r1["dt_end"]).total_seconds() / 3600
-            date_diff = (r2["dt_start"].date() - r1["dt_start"].date()).days
-            if date_diff != 1:
+        pairings = _get_pairings(grp)
+        for i in range(len(pairings) - 1):
+            p1, p2 = pairings[i], pairings[i + 1]
+
+            if not _pairing_toca_franja(p1): continue
+            if not _pairing_toca_franja(p2): continue
+
+            # Día calendario del inicio de cada pairing
+            day_p1 = p1.iloc[0]["dt_start"].date()
+            day_p2 = p2.iloc[0]["dt_start"].date()
+            if (day_p2 - day_p1).days != 1:
                 continue
-            h1 = r1["dt_start"].hour + r1["dt_start"].minute / 60
-            h2 = r2["dt_start"].hour + r2["dt_start"].minute / 60
-            noct1 = 0.5 <= h1 <= 5.5
-            noct2 = 0.5 <= h2 <= 5.5
-            if not (noct1 or noct2):
-                continue
-            if rest_h < 0 or rest_h >= 10:
-                continue
+
+            rest_h = (p2.iloc[0]["dt_start"] - p1.iloc[-1]["dt_end"]).total_seconds() / 3600
             records.append({
-                "staff": int(staff),
-                "nombre": str(r1["Nombre completo"]),
-                "rank": str(r1["Rank"]),
-                "flight1": str(r1["Activity"]),
-                "start1": r1["dt_start"].strftime("%d/%m %H:%M"),
-                "end1": r1["dt_end"].strftime("%H:%M"),
-                "flight2": str(r2["Activity"]),
-                "start2": r2["dt_start"].strftime("%d/%m %H:%M"),
-                "end2": r2["dt_end"].strftime("%H:%M"),
-                "rest_h": round(rest_h, 2),
+                "staff":    int(staff),
+                "nombre":   str(p1.iloc[0]["Nombre completo"]),
+                "rank":     str(p1.iloc[0]["Rank"]),
+                # pairing 1
+                "dia_p1":   day_p1.strftime("%d/%m/%Y"),
+                "vuelos_p1": " → ".join(p1["Activity"].tolist()),
+                "inicio_p1": p1.iloc[0]["dt_start"].strftime("%H:%M"),
+                "fin_p1":    p1.iloc[-1]["dt_end"].strftime("%H:%M"),
+                # pairing 2
+                "dia_p2":   day_p2.strftime("%d/%m/%Y"),
+                "vuelos_p2": " → ".join(p2["Activity"].tolist()),
+                "inicio_p2": p2.iloc[0]["dt_start"].strftime("%H:%M"),
+                "fin_p2":    p2.iloc[-1]["dt_end"].strftime("%H:%M"),
+                # descanso entre pairings
+                "rest_h":   round(rest_h, 2),
             })
     return records
 
