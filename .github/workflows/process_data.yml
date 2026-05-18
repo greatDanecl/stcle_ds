@@ -1,0 +1,57 @@
+name: 🔄 Procesar Roles CABLU
+
+on:
+  push:
+    paths:
+      - 'data/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  procesar-y-publicar:
+    runs-on: ubuntu-latest
+    name: Generar datos y publicar dashboard
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Dependencias
+        run: pip install pandas openpyxl xlrd numpy
+
+      - name: ⚙️ Ejecutar parser
+        run: python src/parser.py
+
+      - name: 📝 Commit datos generados
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "STCLE Bot"
+          git add src/dashboard_data.json
+          git diff --staged --quiet || git commit -m "🔄 Datos actualizados $(date '+%Y-%m-%d %H:%M UTC')"
+          git push
+
+      - name: 📤 Subir artefacto Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+  publicar-pages:
+    needs: procesar-y-publicar
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 🚀 Publicar en GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
