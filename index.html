@@ -159,7 +159,7 @@ tr:hover td{background:#FAFBFF}
   <div class="psvnc-section">
     <div class="section-title" style="margin-bottom:10px"><span class="dot dot-psvnc"></span>PSVNC — Detalle de pares con vuelo nocturno consecutivo y descanso &lt; 10h</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
-      Definición: par de vuelos en días consecutivos donde al menos uno sale entre 00:30–05:30 y el descanso entre el fin del primero y el inicio del segundo es inferior a 10 h (mínimo DAN 121).
+      <strong>Definición:</strong> Un <em>pairing</em> es el conjunto de vuelos de un mismo período de servicio (vuelos separados por menos de 8 h entre sí). Un pairing <em>toca la franja nocturna</em> si alguno de sus vuelos sale, llega o cruza el período 00:30–05:30. El PSVNC se produce cuando hay un pairing nocturno en un día calendario <strong>y</strong> otro pairing nocturno al día siguiente.
     </div>
     <div class="table-scroll">
       <table id="psvnc-table">
@@ -167,11 +167,11 @@ tr:hover td{background:#FAFBFF}
           <tr>
             <th>Nombre</th>
             <th>Cargo</th>
-            <th>Vuelo 1</th>
-            <th>Fin</th>
-            <th>Vuelo 2</th>
-            <th>Inicio</th>
-            <th>Descanso</th>
+            <th>Día 1</th>
+            <th>Pairing 1 (vuelos)</th>
+            <th>Día 2</th>
+            <th>Pairing 2 (vuelos)</th>
+            <th>Descanso entre</th>
           </tr>
         </thead>
         <tbody id="psvnc-tbody"></tbody>
@@ -422,12 +422,12 @@ function renderPSVNC(all) {
   empty.style.display = 'none';
   tbody.innerHTML = rows.map(r => `
     <tr>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.nombre}">${r.nombre}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.nombre}">${r.nombre}</td>
       <td><span class="badge ${r.rank==='CCM'?'badge-ccm':'badge-cc'}">${r.rank}</span></td>
-      <td><strong>${r.flight1}</strong></td>
-      <td style="color:var(--muted)">${r.end1}</td>
-      <td><strong>${r.flight2}</strong></td>
-      <td style="color:var(--muted)">${r.start2}</td>
+      <td style="white-space:nowrap;color:var(--muted)">${r.dia_p1}</td>
+      <td style="font-size:11px"><strong style="font-size:10px">${r.inicio_p1}–${r.fin_p1}</strong><br>${r.vuelos_p1}</td>
+      <td style="white-space:nowrap;color:var(--muted)">${r.dia_p2}</td>
+      <td style="font-size:11px"><strong style="font-size:10px">${r.inicio_p2}–${r.fin_p2}</strong><br>${r.vuelos_p2}</td>
       <td><span class="rest-badge">${r.rest_h.toFixed(1)}h</span></td>
     </tr>`).join('');
 }
