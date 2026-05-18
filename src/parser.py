@@ -38,45 +38,70 @@ def parse_dt_feb(date_str, time_str):
     except:
         return pd.NaT
 
-# ─── carga archivos ───────────────────────────────────────────────────
-def load_file(path: Path) -> pd.DataFrame:
-    df = pd.read_excel(path)
-    cols = list(df.columns)
+# ─── helper block time ────────────────────────────────────────────────
+def _parse_bt(v) -> float:
+    import datetime as _dt
+    if pd.isna(v): return 0.0
+    if isinstance(v, _dt.time):
+        return v.hour + v.minute / 60 + v.second / 3600
+    try:
+        f = float(v)
+        return f * 24  # fracción de día Excel
+    except:
+        return 0.0
 
-    is_feb = "First Name" in cols
-    if is_feb:
+# ─── carga archivos ───────────────────────────────────────────────────
+# Formato A (sept25–ene26): columnas CamelCase, hoja default
+# Formato B (feb26):        columnas CamelCase + First/Last Name separados
+# Formato C (mar26+):       columnas snake_case, hoja 'SindLU', 2 períodos/archivo
+#                           columna tipo_rol: 'Ejecutado' | 'Publicado'
+
+def load_file(path: Path) -> pd.DataFrame:
+    # Detectar hoja correcta
+    xl   = pd.ExcelFile(path)
+    sheet = "SindLU" if "SindLU" in xl.sheet_names else xl.sheet_names[0]
+    df   = pd.read_excel(path, sheet_name=sheet)
+    cols = set(df.columns)
+
+    # ── Formato C: snake_case (mar26 en adelante) ──────────────────────
+    if "crew_id" in cols:
+        df = df.rename(columns={
+            "crew_id":               "Staff Num",
+            "nombre_completo":       "Nombre completo",
+            "rank_code":             "Rank",
+            "activity_code":         "Activity",
+            "block_time":            "Block Time",
+        })
+        df["dt_start"] = df.apply(lambda r: parse_dt_numeric(r["str_dt"], r["str_tm"]), axis=1)
+        df["dt_end"]   = df.apply(lambda r: parse_dt_numeric(r["end_dt"], r["end_tm"]), axis=1)
+        # Para meses futuros usar Publicado; para meses pasados usar Ejecutado
+        # Si ambos existen en el archivo, Ejecutado tiene prioridad (datos reales)
+        if "tipo_rol" in df.columns:
+            if "Ejecutado" in df["tipo_rol"].values:
+                df = df[df["tipo_rol"] == "Ejecutado"]
+            # else: solo Publicado, se usa todo
+
+    # ── Formato B: FEB26 con First/Last Name ──────────────────────────
+    elif "First Name" in cols:
         df["Nombre completo"] = df["First Name"].fillna("") + " " + df["Last Name"].fillna("")
         df["dt_start"] = df.apply(lambda r: parse_dt_feb(r["Str Dt"], r["Str Tm"]), axis=1)
         df["dt_end"]   = df.apply(lambda r: parse_dt_feb(r["End Dt"], r["End Tm"]), axis=1)
+
+    # ── Formato A: columnas CamelCase estándar ────────────────────────
     else:
         df["dt_start"] = df.apply(lambda r: parse_dt_numeric(r["Str Dt"], r["Str Tm"]), axis=1)
         df["dt_end"]   = df.apply(lambda r: parse_dt_numeric(r["End Dt"], r["End Tm"]), axis=1)
 
-    # normalizar columnas esenciales
+    # Normalizar columnas comunes
     if "sindicato" not in df.columns:
         df["sindicato"] = "CABLU"
     if "periodo" not in df.columns:
-        # inferir del filename o de Str Dt
         df["periodo"] = df["dt_start"].dt.to_period("M").astype(str)
 
-    # block time: puede ser datetime.time, fracción de día (float), o NaN
-    if "Block Time" in df.columns:
-        def parse_bt(v):
-            import datetime as _dt
-            if pd.isna(v): return 0.0
-            if isinstance(v, _dt.time):
-                return v.hour + v.minute / 60 + v.second / 3600
-            try:
-                f = float(v)
-                return f * 24  # fracción de día
-            except:
-                return 0.0
-        df["block_hours"] = df["Block Time"].apply(parse_bt)
-    else:
-        df["block_hours"] = 0.0
+    df["block_hours"] = df["Block Time"].apply(_parse_bt) if "Block Time" in df.columns else 0.0
 
-    keep = ["Staff Num", "Nombre completo", "Rank", "Activity", "dt_start", "dt_end",
-            "block_hours", "sindicato", "periodo"]
+    keep = ["Staff Num", "Nombre completo", "Rank", "Activity",
+            "dt_start", "dt_end", "block_hours", "sindicato", "periodo"]
     for c in keep:
         if c not in df.columns:
             df[c] = None
