@@ -96,6 +96,31 @@ tr:hover td{background:#FAFBFF}
 .hora-col{display:flex;flex-direction:column;align-items:center;flex:1}
 .hora-bar{background:var(--rojo);border-radius:2px 2px 0 0;width:100%;min-height:2px;transition:height .4s}
 .hora-lbl{font-size:9px;color:var(--muted);margin-top:2px}
+/* ── equidad ── */
+.eq-gauge-wrap{display:flex;align-items:center;gap:16px;margin-bottom:14px}
+.eq-gauge{position:relative;width:110px;height:110px;flex-shrink:0}
+.eq-gauge svg{transform:rotate(-90deg)}
+.eq-gauge-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.eq-gauge-pct{font-size:22px;font-weight:700;line-height:1}
+.eq-gauge-sub{font-size:10px;color:var(--muted);margin-top:2px}
+.eq-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1}
+.eq-stat{background:var(--gris);border-radius:6px;padding:6px 10px}
+.eq-stat-label{font-size:10px;color:var(--muted);font-weight:500}
+.eq-stat-val{font-size:15px;font-weight:700;color:var(--text);line-height:1.2}
+.eq-hist-wrap{margin-top:10px}
+.eq-hist-row{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.eq-hist-lbl{font-size:10px;color:var(--muted);width:52px;text-align:right;flex-shrink:0}
+.eq-hist-bar{height:14px;border-radius:2px;transition:width .4s ease;min-width:2px}
+.eq-hist-cnt{font-size:10px;color:var(--muted);width:24px}
+.eq-hist-bar.inside{background:var(--verde)}
+.eq-hist-bar.below{background:var(--amarillo)}
+.eq-hist-bar.above{background:var(--rojo-sem)}
+.eq-legend{display:flex;gap:12px;margin:8px 0 4px;flex-wrap:wrap}
+.eq-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+.eq-legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.eq-table-tabs{display:flex;gap:4px;margin-bottom:8px}
+.eq-tab{padding:4px 12px;border-radius:12px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--borde);background:#fff;color:var(--muted)}
+.eq-tab.active{background:var(--azul);color:#fff;border-color:var(--azul)}
 /* ── footer ── */
 .footer{background:#fff;border-top:1px solid var(--borde);padding:10px 24px;text-align:center;font-size:11px;color:var(--muted)}
 /* ── responsive ── */
@@ -213,6 +238,103 @@ tr:hover td{background:#FAFBFF}
     </div>
   </div>
 
+  <!-- KPI EQUIDAD -->
+  <div class="psvnc-section" id="eq-section">
+    <div class="section-title" style="margin-bottom:10px">
+      <span class="dot" style="background:var(--azul)"></span>
+      KPI Equidad — Distribución de horas de vuelo
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px">
+      Base de cálculo: socios con vuelos en el mes, excluyendo quienes tienen <strong>más de 5 días de ausencia</strong> por cualquier razón (licencia, VC, SICK, etc.) y quienes no registran vuelos. Umbral de equidad: <strong>±9% del promedio del cargo</strong>.
+    </div>
+
+    <div class="eq-gauge-wrap">
+      <div class="eq-gauge">
+        <svg width="110" height="110" viewBox="0 0 110 110">
+          <circle cx="55" cy="55" r="46" fill="none" stroke="#E5E7EB" stroke-width="10"/>
+          <circle id="eq-arc" cx="55" cy="55" r="46" fill="none" stroke="#1A237E"
+                  stroke-width="10" stroke-dasharray="289 289" stroke-linecap="round"/>
+        </svg>
+        <div class="eq-gauge-label">
+          <div class="eq-gauge-pct" id="eq-indice-val">—</div>
+          <div class="eq-gauge-sub">índice</div>
+          <div class="eq-gauge-sub">equidad</div>
+        </div>
+      </div>
+
+      <div class="eq-stats">
+        <div class="eq-stat">
+          <div class="eq-stat-label">Promedio base (μ)</div>
+          <div class="eq-stat-val" id="eq-mean">—</div>
+        </div>
+        <div class="eq-stat">
+          <div class="eq-stat-label">Desv. estándar (σ)</div>
+          <div class="eq-stat-val" id="eq-std">—</div>
+        </div>
+        <div class="eq-stat">
+          <div class="eq-stat-label">Coef. Variación (CV)</div>
+          <div class="eq-stat-val" id="eq-cv">—</div>
+        </div>
+        <div class="eq-stat">
+          <div class="eq-stat-label">Brecha máx–mín</div>
+          <div class="eq-stat-val" id="eq-brecha">—</div>
+        </div>
+        <div class="eq-stat" style="background:#FEF3C7">
+          <div class="eq-stat-label">Sub-asignados</div>
+          <div class="eq-stat-val" id="eq-sub" style="color:#92400E">—</div>
+        </div>
+        <div class="eq-stat" style="background:#FEE2E2">
+          <div class="eq-stat-label">Sobre-asignados</div>
+          <div class="eq-stat-val" id="eq-sobre" style="color:#991B1B">—</div>
+        </div>
+        <div class="eq-stat">
+          <div class="eq-stat-label">Rango equitativo</div>
+          <div class="eq-stat-val" id="eq-rango" style="font-size:12px">—</div>
+        </div>
+        <div class="eq-stat">
+          <div class="eq-stat-label">Excluidos (aus>5d)</div>
+          <div class="eq-stat-val" id="eq-excl">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Histograma -->
+    <div class="eq-hist-wrap">
+      <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px">Distribución de horas — socios base</div>
+      <div class="eq-legend">
+        <div class="eq-legend-item"><div class="eq-legend-dot" style="background:var(--amarillo)"></div>Por debajo del rango</div>
+        <div class="eq-legend-item"><div class="eq-legend-dot" style="background:var(--verde)"></div>Dentro del rango ±9%</div>
+        <div class="eq-legend-item"><div class="eq-legend-dot" style="background:var(--rojo-sem)"></div>Por encima del rango</div>
+      </div>
+      <div id="eq-hist"></div>
+    </div>
+
+    <!-- Tablas detalle -->
+    <div style="margin-top:14px">
+      <div class="eq-table-tabs">
+        <button class="eq-tab active" onclick="eqTab('sub',this)">Sub-asignados</button>
+        <button class="eq-tab" onclick="eqTab('sobre',this)">Sobre-asignados</button>
+        <button class="eq-tab" onclick="eqTab('excl',this)">Excluidos (aus&gt;5d)</button>
+      </div>
+      <div class="table-scroll" style="max-height:240px">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Hrs vuelo</th>
+              <th>vs promedio</th>
+              <th>Días ausencia</th>
+            </tr>
+          </thead>
+          <tbody id="eq-tbody"></tbody>
+        </table>
+      </div>
+      <div id="eq-empty" style="text-align:center;padding:16px;color:var(--muted);font-size:13px;display:none">
+        Sin socios en esta categoría
+      </div>
+    </div>
+  </div>
+
 </div><!-- /main -->
 
 <footer class="footer">
@@ -292,6 +414,7 @@ function render() {
   renderSemaforo(c.semaforo || {});
   renderHoraChart(c.hora_dist_noct || {});
   renderAlerts(c.socios || []);
+  renderEquidad(c.equidad || {});
 }
 
 // ── KPI cards ────────────────────────────────────────────────────────
@@ -488,6 +611,99 @@ function renderAlerts(socios) {
       <td>${s.sb_dias}</td>
       <td><span class="badge badge-${s.sema}">${s.sema.toUpperCase()}</span></td>
     </tr>`).join('');
+}
+
+// ── Equidad ───────────────────────────────────────────────────────────
+let _eqData   = {};
+let _eqTabKey = 'sub';
+
+function eqTab(key, btn) {
+  _eqTabKey = key;
+  document.querySelectorAll('.eq-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderEquidadTabla(_eqData);
+}
+
+function renderEquidad(eq) {
+  _eqData   = eq;
+  _eqTabKey = 'sub';
+  document.querySelectorAll('.eq-tab').forEach((b,i) => b.classList.toggle('active', i===0));
+
+  if (!eq.mean_h) return;
+
+  // Gauge circular
+  const pct_val = eq.indice_equidad || 0;
+  const circ = 2 * Math.PI * 46;  // r=46
+  const dash = (pct_val / 100 * circ).toFixed(1);
+  const arc  = document.getElementById('eq-arc');
+  arc.setAttribute('stroke-dasharray', `${dash} ${circ}`);
+  const color = pct_val >= 70 ? '#15803D' : pct_val >= 50 ? '#B45309' : '#B91C1C';
+  arc.setAttribute('stroke', color);
+  document.getElementById('eq-indice-val').textContent = pct_val + '%';
+  document.getElementById('eq-indice-val').style.color = color;
+
+  // Stats
+  document.getElementById('eq-mean').textContent   = eq.mean_h + 'h';
+  document.getElementById('eq-std').textContent    = eq.std_h  + 'h';
+  document.getElementById('eq-cv').textContent     = eq.cv_pct + '%';
+  document.getElementById('eq-brecha').textContent = eq.brecha_h + 'h';
+  document.getElementById('eq-sub').textContent    = eq.n_sub  + ' socios';
+  document.getElementById('eq-sobre').textContent  = eq.n_sobre + ' socios';
+  document.getElementById('eq-rango').textContent  = eq.umbral_lo + 'h – ' + eq.umbral_hi + 'h';
+  document.getElementById('eq-excl').textContent   = eq.n_excluidos_aus + ' socios';
+
+  // Histograma
+  const hist = eq.histograma || [];
+  const maxN = Math.max(...hist.map(b => b.n), 1);
+  const lo   = eq.umbral_lo;
+  const hi   = eq.umbral_hi;
+  const wrap = document.getElementById('eq-hist');
+  wrap.innerHTML = hist.filter(b => b.n > 0).map(b => {
+    const w = Math.max(2, b.n / maxN * 200);
+    // Color based on whether bucket is inside, below or above range
+    const midBucket = (b.desde + b.hasta) / 2;
+    const cls = midBucket < lo ? 'below' : midBucket > hi ? 'above' : 'inside';
+    return `<div class="eq-hist-row">
+      <div class="eq-hist-lbl">${b.desde}–${b.hasta}h</div>
+      <div class="eq-hist-bar ${cls}" style="width:${w}px"></div>
+      <div class="eq-hist-cnt">${b.n}</div>
+    </div>`;
+  }).join('');
+
+  renderEquidadTabla(eq);
+}
+
+function renderEquidadTabla(eq) {
+  const tbody = document.getElementById('eq-tbody');
+  const empty = document.getElementById('eq-empty');
+  const mean  = eq.mean_h || 0;
+
+  let rows = [];
+  if (_eqTabKey === 'sub')   rows = eq.sub_asig  || [];
+  if (_eqTabKey === 'sobre') rows = eq.sobre_asig || [];
+  if (_eqTabKey === 'excl')  rows = eq.excluidos  || [];
+
+  if (!rows.length) {
+    tbody.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  tbody.innerHTML = rows.map(r => {
+    const diff   = mean > 0 ? (r.bt_h - mean) : 0;
+    const diffStr = diff >= 0 ? `+${diff.toFixed(1)}h` : `${diff.toFixed(1)}h`;
+    const diffColor = diff > 0 ? 'var(--rojo-sem)' : diff < 0 ? 'var(--amarillo)' : 'var(--muted)';
+    const ausCell = _eqTabKey === 'excl'
+      ? `<td><span class="badge badge-rojo">${r.dias_aus}d</span></td>`
+      : `<td style="color:var(--muted)">${r.dias_aus}d</td>`;
+    const btColor = _eqTabKey === 'sub' ? 'var(--amarillo)' : _eqTabKey === 'sobre' ? 'var(--rojo-sem)' : 'var(--muted)';
+    return `<tr>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.nombre}">${r.nombre}</td>
+      <td style="font-weight:600;color:${btColor}">${r.bt_h}h</td>
+      <td style="color:${diffColor};font-weight:600">${_eqTabKey!=='excl'?diffStr:'—'}</td>
+      ${ausCell}
+    </tr>`;
+  }).join('');
 }
 
 window.addEventListener('DOMContentLoaded', init);
