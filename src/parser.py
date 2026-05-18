@@ -104,6 +104,13 @@ def is_sick(act):     return str(act).upper() in ("SICK", "LNP", "OOF")
 def is_standby(act):  return str(act).upper() in ("B","ASB1","ASB2","ASB3","ASC","BCM","BCN","HB7","HSB1","HSB2")
 def is_training(act): return str(act).upper() in ("ADM","ASB1","ASB2","ASB3","HSB1","HSB2","CRM","CLA")
 
+# Ausencia prolongada: cualquier razón (VC, licencias, permisos, capacitación fuera)
+_AUSENCIA_SET = {"SICK","LNP","OOF","LMAT","LPAT","LIC","VACL","ML",
+                 "INJ","SUS","REST","AUS","CLA","ADM"}
+def is_ausencia(act):
+    a = str(act).upper()
+    return a in _AUSENCIA_SET or a.startswith("VC") or a.startswith("HSB")
+
 def is_nocturnal(ts):
     h = ts.hour + ts.minute / 60
     return 0.5 <= h <= 5.5
@@ -270,6 +277,84 @@ def process_month(month_str: str, df: pd.DataFrame) -> dict:
         # ── KPI 7: capacitaciones ────────────────────────────────────
         n_cap_socios = df_r[df_r["Activity"].apply(is_training)]["Staff Num"].nunique()
 
+        # ── KPI EQ: Equidad de distribución de horas ─────────────────
+        # Base: socios con bt > 0 y sin ausencia prolongada (> 5 días)
+        aus_by_staff = df_r[df_r["Activity"].apply(is_ausencia)].groupby("Staff Num").size()
+        bt_all = {sid: float(bt_by_staff.get(sid, 0)) for sid in staff_rank}
+
+        # Clasificar socios
+        eq_excluidos = []   # ausencia > 5d (excluidos del promedio base)
+        eq_sin_vuelo = []   # bt == 0 pero no por ausencia (excluidos del base)
+        eq_base = []        # participan en el cálculo del promedio
+
+        for sid in staff_rank:
+            dias_aus = int(aus_by_staff.get(sid, 0))
+            bt_h     = bt_all[sid]
+            nombre   = str(all_staff[all_staff["Staff Num"] == sid].iloc[0]["Nombre completo"])
+            entry    = {"staff": int(sid), "nombre": nombre, "bt_h": round(bt_h, 1), "dias_aus": dias_aus}
+            if dias_aus > 5:
+                eq_excluidos.append(entry)
+            elif bt_h == 0:
+                eq_sin_vuelo.append(entry)
+            else:
+                eq_base.append(entry)
+
+        # Cálculo estadístico sobre la base
+        bt_base_vals = np.array([e["bt_h"] for e in eq_base])
+        if len(bt_base_vals) >= 2:
+            eq_mean = float(np.mean(bt_base_vals))
+            eq_std  = float(np.std(bt_base_vals, ddof=1))
+            eq_cv   = round(eq_std / eq_mean * 100, 1)
+            tol     = eq_mean * 0.09          # ±9% del promedio
+            lo, hi  = eq_mean - tol, eq_mean + tol
+
+            # Clasificar cada socio de la base
+            sub_asig  = [e for e in eq_base if e["bt_h"] < lo]
+            sobre_asig = [e for e in eq_base if e["bt_h"] > hi]
+            dentro     = [e for e in eq_base if lo <= e["bt_h"] <= hi]
+
+            eq_indice = round(len(dentro) / len(eq_base) * 100, 1)  # % dentro del rango
+
+            # Histograma en buckets de 5h para visualización
+            min_h = max(0, int(np.floor(bt_base_vals.min() / 5) * 5))
+            max_h = int(np.ceil(bt_base_vals.max() / 5) * 5) + 5
+            buckets = []
+            for b in range(min_h, max_h, 5):
+                cnt = int(((bt_base_vals >= b) & (bt_base_vals < b + 5)).sum())
+                buckets.append({"desde": b, "hasta": b+5, "n": cnt})
+
+            # Percentiles para diagrama de caja
+            p10, p25, p50, p75, p90 = [round(float(x), 1)
+                for x in np.percentile(bt_base_vals, [10, 25, 50, 75, 90])]
+        else:
+            eq_mean = eq_std = eq_cv = 0.0
+            lo = hi = tol = 0.0
+            eq_indice = 0.0
+            sub_asig = sobre_asig = dentro = buckets = []
+            p10 = p25 = p50 = p75 = p90 = 0.0
+
+        equidad = {
+            "n_base":          len(eq_base),
+            "n_excluidos_aus": len(eq_excluidos),
+            "n_sin_vuelo":     len(eq_sin_vuelo),
+            "mean_h":          round(eq_mean, 1),
+            "std_h":           round(eq_std, 1),
+            "cv_pct":          eq_cv,                     # coeficiente de variación real
+            "umbral_lo":       round(lo, 1),
+            "umbral_hi":       round(hi, 1),
+            "indice_equidad":  eq_indice,                 # % dentro de ±9%
+            "n_dentro":        len(dentro),
+            "n_sub":           len(sub_asig),             # por debajo del umbral
+            "n_sobre":         len(sobre_asig),           # por encima del umbral
+            "brecha_h":        round(float(bt_base_vals.max() - bt_base_vals.min()), 1) if len(bt_base_vals) else 0.0,
+            "percentiles":     {"p10": p10, "p25": p25, "p50": p50, "p75": p75, "p90": p90},
+            "histograma":      buckets,
+            # listas de socios para tabla detalle
+            "sub_asig":        sorted(sub_asig,  key=lambda x: x["bt_h"]),
+            "sobre_asig":      sorted(sobre_asig, key=lambda x: x["bt_h"], reverse=True),
+            "excluidos":       sorted(eq_excluidos, key=lambda x: x["nombre"]),
+        }
+
         # ── KPI 8: semáforo individual ───────────────────────────────
         semaforos = {"verde": 0, "amarillo": 0, "rojo": 0}
         detalle_socios = []
@@ -335,6 +420,8 @@ def process_month(month_str: str, df: pd.DataFrame) -> dict:
             # KPI 7 capacitaciones
             "socios_con_cap": int(n_cap_socios),
             "pct_socios_cap": pct(n_cap_socios, n_total),
+            # KPI EQ equidad de distribución
+            "equidad": equidad,
             # KPI 8 semáforo
             "semaforo": semaforos,
             # detalle socios
